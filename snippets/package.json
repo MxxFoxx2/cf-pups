@@ -1,0 +1,12 @@
+{
+  "name": "edtunnel-snippets",
+  "version": "1.0.0",
+  "description": "EDtunnel Cloudflare Snippets 精简版",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  }
+}

@@ -1,0 +1,61 @@
+# Logs
+logs
+*.log
+.wrangler
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Build output
+build/
+dist/
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Miscellaneous
+.DS_Store
+Thumbs.db
+.env
+node_modules/
+package-lock.json
+ref_code.js
+test/
+Snippets.js
+
+# === appended by migration ===
+node_modules/
+.next/
+.turbo/
+.nuxt/
+dist/
+build/
+out/
+target/
+.cache/
+.parcel-cache/
+.svelte-kit/
+.vercel/
+.angular/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+.venv/
+env/
+myenv/
+.tox/
+*.log
+*.log.*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

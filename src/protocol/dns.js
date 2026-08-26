@@ -3,6 +3,7 @@
  */
 
 import { WS_READY_STATE_OPEN } from '../config/constants.js';
+import { safeCloseWebSocket } from '../utils/websocket.js';
 
 /**
  * Handles DNS query through TCP.
@@ -12,25 +13,30 @@ import { WS_READY_STATE_OPEN } from '../config/constants.js';
  * @param {ArrayBuffer|null} protocolResponseHeader - Protocol response header (VLESS)
  * @param {Function} log - Logging function
  * @param {Function} connect - Cloudflare socket connect function
+ * @throws {Error} If the DNS query cannot be forwarded
  */
 export async function handleDNSQuery(udpChunk, webSocket, protocolResponseHeader, log, connect) {
 	// Always use hardcoded DNS server regardless of client request
 	// Some DNS servers don't support DNS over TCP
+	/** @type {import("@cloudflare/workers-types").Socket|null} */
+	let tcpSocket = null;
+	/** @type {WritableStreamDefaultWriter|null} */
+	let writer = null;
 	try {
 		const dnsServer = '8.8.4.4'; // change to 1.1.1.1 after cf fix connect own ip bug
 		const dnsPort = 53;
 		/** @type {ArrayBuffer | null} */
 		let vlessHeader = protocolResponseHeader;
-		/** @type {import("@cloudflare/workers-types").Socket} */
-		const tcpSocket = connect({
+		tcpSocket = connect({
 			hostname: dnsServer,
 			port: dnsPort,
 		});
 
 		log(`connected to ${dnsServer}:${dnsPort}`);
-		const writer = tcpSocket.writable.getWriter();
+		writer = tcpSocket.writable.getWriter();
 		await writer.write(udpChunk);
 		writer.releaseLock();
+		writer = null;
 		await tcpSocket.readable.pipeTo(new WritableStream({
 			async write(chunk) {
 				if (webSocket.readyState === WS_READY_STATE_OPEN) {
@@ -53,5 +59,21 @@ export async function handleDNSQuery(udpChunk, webSocket, protocolResponseHeader
 		console.error(
 			`handleDNSQuery have exception, error: ${error.message}`
 		);
+		if (writer) {
+			try {
+				writer.releaseLock();
+			} catch (closeError) {
+				log(`DNS writer cleanup error: ${closeError.message}`);
+			}
+		}
+		if (tcpSocket) {
+			try {
+				await tcpSocket.close();
+			} catch (closeError) {
+				log(`DNS socket cleanup error: ${closeError.message}`);
+			}
+		}
+		safeCloseWebSocket(webSocket);
+		throw error;
 	}
 }

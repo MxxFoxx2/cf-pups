@@ -3,6 +3,33 @@
  */
 
 /**
+ * Releases stream locks and closes a socket after a failed handshake.
+ * Cleanup failures are logged rather than propagated so the original error survives.
+ * @param {import("@cloudflare/workers-types").Socket} socket - Socket to close
+ * @param {WritableStreamDefaultWriter} writer - Writer to release
+ * @param {ReadableStreamDefaultReader} reader - Reader to release
+ * @param {Function} log - Logging function
+ * @returns {Promise<void>}
+ */
+async function releaseAndClose(socket, writer, reader, log) {
+	try {
+		writer.releaseLock();
+	} catch (closeError) {
+		log(`HTTP CONNECT writer cleanup error: ${closeError.message}`);
+	}
+	try {
+		reader.releaseLock();
+	} catch (closeError) {
+		log(`HTTP CONNECT reader cleanup error: ${closeError.message}`);
+	}
+	try {
+		await socket.close();
+	} catch (closeError) {
+		log(`HTTP CONNECT socket cleanup error: ${closeError.message}`);
+	}
+}
+
+/**
  * Establishes HTTP CONNECT tunnel proxy connection.
  * @param {number} addressType - Type of address (1=IPv4, 2=Domain, 3=IPv6)
  * @param {string} addressRemote - Remote address to connect to
@@ -11,7 +38,8 @@
  * @param {{username?: string, password?: string, hostname: string, port: number}} parsedHttpAddr - Parsed HTTP proxy address
  * @param {Function} connect - Cloudflare socket connect function
  * @param {Uint8Array} [initialData] - Initial data to send after connection established
- * @returns {Promise<import("@cloudflare/workers-types").Socket|undefined>} Connected socket or undefined on failure
+ * @returns {Promise<import("@cloudflare/workers-types").Socket>} Connected socket
+ * @throws {Error} If the CONNECT tunnel cannot be established
  */
 export async function httpConnect(addressType, addressRemote, portRemote, log, parsedHttpAddr, connect, initialData = new Uint8Array(0)) {
 	const { username, password, hostname, port } = parsedHttpAddr;
@@ -85,9 +113,7 @@ export async function httpConnect(addressType, addressRemote, portRemote, log, p
 		return socket;
 	} catch (error) {
 		log(`HTTP CONNECT error: ${error.message}`);
-		try { writer.releaseLock(); } catch (e) { }
-		try { reader.releaseLock(); } catch (e) { }
-		try { socket.close(); } catch (e) { }
-		return undefined;
+		await releaseAndClose(socket, writer, reader, log);
+		throw error;
 	}
 }

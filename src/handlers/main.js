@@ -66,8 +66,8 @@ export async function handleRequest(request, env, ctx, connect) {
 			const proxyAddresses = urlPROXYIP.split(',').map(addr => addr.trim());
 			const isValid = proxyAddresses.every(addr => proxyPattern.test(addr));
 			if (!isValid) {
-				console.warn('Invalid proxyip format:', urlPROXYIP);
-				urlPROXYIP = null;
+				console.error('Invalid proxyip format:', urlPROXYIP);
+				return new Response(`Invalid proxyip parameter: ${urlPROXYIP}`, { status: 400 });
 			}
 		}
 
@@ -77,8 +77,8 @@ export async function handleRequest(request, env, ctx, connect) {
 			const socks5Addresses = urlSOCKS5.split(',').map(addr => addr.trim());
 			const isValid = socks5Addresses.every(addr => socks5Pattern.test(addr));
 			if (!isValid) {
-				console.warn('Invalid socks5 format:', urlSOCKS5);
-				urlSOCKS5 = null;
+				console.error('Invalid socks5 format');
+				return new Response('Invalid socks5 parameter', { status: 400 });
 			}
 		}
 
@@ -103,14 +103,19 @@ export async function handleRequest(request, env, ctx, connect) {
 			try {
 				const vlessUrl = urlVLESS || requestConfig.vlessOutbound;
 				const parsed = parseVlessUrl(vlessUrl);
-				if (parsed) {
-					requestConfig.parsedVlessOutbound = parsed;
-					requestConfig.proxyType = 'vless';
-					// Use globalProxy flag from path/query params (e.g., /gvless=, /vless://, ?globalproxy)
-					console.log('VLESS outbound configured:', parsed.address, parsed.port);
+				if (!parsed) {
+					throw new Error('malformed VLESS outbound URL');
 				}
+				requestConfig.parsedVlessOutbound = parsed;
+				requestConfig.proxyType = 'vless';
+				// Use globalProxy flag from path/query params (e.g., /gvless=, /vless://, ?globalproxy)
+				console.log('VLESS outbound configured:', parsed.address, parsed.port);
 			} catch (err) {
-				console.log('VLESS outbound parse error:', err.toString());
+				console.error('VLESS outbound parse error:', err.toString());
+				if (urlVLESS) {
+					return new Response(`Invalid vless parameter: ${err.message}`, { status: 400 });
+				}
+				throw new Error(`Invalid VLESS_OUTBOUND configuration: ${err.message}`);
 			}
 		}
 
@@ -122,7 +127,8 @@ export async function handleRequest(request, env, ctx, connect) {
 					requestConfig.parsedProxyAddress = socks5AddressParser(selectedProxy);
 					requestConfig.proxyType = 'http';
 				} catch (err) {
-					console.log('HTTP proxy parse error:', err.toString());
+					console.error('HTTP proxy parse error:', err.toString());
+					return new Response(`Invalid http parameter: ${err.message}`, { status: 400 });
 				}
 			} else if (requestConfig.socks5Address) {
 				try {
@@ -130,7 +136,11 @@ export async function handleRequest(request, env, ctx, connect) {
 					requestConfig.parsedProxyAddress = socks5AddressParser(selectedProxy);
 					requestConfig.proxyType = 'socks5';
 				} catch (err) {
-					console.log('SOCKS5 proxy parse error:', err.toString());
+					console.error('SOCKS5 proxy parse error:', err.toString());
+					if (urlSOCKS5) {
+						return new Response(`Invalid socks5 parameter: ${err.message}`, { status: 400 });
+					}
+					throw new Error(`Invalid SOCKS5 configuration: ${err.message}`);
 				}
 			}
 		}
@@ -200,6 +210,7 @@ export async function handleRequest(request, env, ctx, connect) {
 			return await protocolOverWSHandler(request, requestConfig, connect);
 		}
 	} catch (err) {
-		return new Response(err.toString());
+		console.error('handleRequest failed:', err?.stack || err);
+		return new Response(String(err), { status: 500 });
 	}
 }

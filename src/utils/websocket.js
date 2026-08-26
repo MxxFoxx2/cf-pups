@@ -2,7 +2,7 @@
  * WebSocket utility functions
  */
 
-import { WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING } from '../config/constants.js';
+import { WS_READY_STATE_CLOSED } from '../config/constants.js';
 
 /**
  * Safely closes WebSocket connection.
@@ -11,7 +11,7 @@ import { WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING } from '../config/constants
  */
 export function safeCloseWebSocket(socket) {
 	try {
-		if (socket.readyState === WS_READY_STATE_OPEN || socket.readyState === WS_READY_STATE_CLOSING) {
+		if (socket.readyState !== WS_READY_STATE_CLOSED) {
 			socket.close();
 		}
 	} catch (error) {

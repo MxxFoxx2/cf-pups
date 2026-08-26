@@ -157,15 +157,11 @@ function validateVlessConfig(address, streamSettings) {
  * @param {Uint8Array} rawClientData - Initial client data
  * @param {Function} log - Logging function
  * @param {number} [timeout=10000] - Connection timeout in ms
- * @returns {Promise<{readable: ReadableStream, writable: WritableStream, closed: Promise<void>}|null>}
+ * @returns {Promise<{readable: ReadableStream, writable: WritableStream, closed: Promise<void>}>}
+ * @throws {Error} If validation, connection, or stream setup fails
  */
 export async function vlessOutboundConnect(config, command, addressType, addressRemote, portRemote, rawClientData, log, timeout = VLESS_OUTBOUND_TIMEOUT) {
-	try {
-		validateVlessConfig(config.address, config.streamSettings);
-	} catch (err) {
-		log(`[VLESS] Config validation failed: ${err.message}`);
-		return null;
-	}
+	validateVlessConfig(config.address, config.streamSettings);
 
 	// Build WebSocket URL
 	const security = config.streamSettings.security || 'none';
@@ -180,14 +176,8 @@ export async function vlessOutboundConnect(config, command, addressType, address
 
 	// Create WebSocket connection
 	log(`[VLESS] Creating WebSocket to ${wsURL}...`);
-	let ws;
-	try {
-		ws = new WebSocket(wsURL);
-		log(`[VLESS] WebSocket object created, readyState: ${ws.readyState}`);
-	} catch (err) {
-		log(`[VLESS] Failed to create WebSocket: ${err.message}`);
-		return null;
-	}
+	const ws = new WebSocket(wsURL);
+	log(`[VLESS] WebSocket object created, readyState: ${ws.readyState}`);
 
 	// Create a Promise that resolves when the WebSocket closes
 	let closedResolve;
@@ -224,13 +214,9 @@ export async function vlessOutboundConnect(config, command, addressType, address
 		});
 	} catch (err) {
 		log(`[VLESS] Connection failed: ${err.message}`);
-		try {
-			ws.close();
-		} catch (e) {
-			// Ignore close errors
-		}
+		safeCloseWebSocket(ws);
 		closedResolve();
-		return null;
+		throw err;
 	}
 
 	log('[VLESS] Connection promise resolved, setting up handlers...');
@@ -364,6 +350,6 @@ export async function vlessOutboundConnect(config, command, addressType, address
 		log(`[VLESS] Error stack: ${err.stack}`);
 		safeCloseWebSocket(ws);
 		closedResolve();
-		return null;
+		throw err;
 	}
 }

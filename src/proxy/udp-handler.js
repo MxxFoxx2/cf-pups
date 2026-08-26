@@ -32,26 +32,19 @@ export function canHandleUDP(config) {
  * @param {Uint8Array} rawClientData - Raw client data after header
  * @param {Function} log - Logging function
  * @param {Object} config - Request configuration
- * @returns {Promise<WritableStream|null>} Writable stream for subsequent data, or null on failure
+ * @returns {Promise<WritableStream>} Writable stream for subsequent data
+ * @throws {Error} If no UDP-capable outbound is configured or the connection fails
  */
 export async function handleUDPOutbound(webSocket, protocolResponseHeader, addressType, addressRemote, portRemote, rawClientData, log, config) {
 	// Only VLESS outbound supports UDP currently
 	if (config.proxyType !== 'vless' || !config.parsedVlessOutbound) {
-		log('[UDP] No UDP-capable outbound configured');
-		safeCloseWebSocket(webSocket);
-		return null;
+		throw new Error('No UDP-capable outbound configured');
 	}
 
 	log(`[UDP] Establishing VLESS outbound for UDP://${addressRemote}:${portRemote}`);
 
 	// Connect via VLESS outbound
 	const vlessResult = await vlessOutboundConnect(config.parsedVlessOutbound, VLESS_CMD_UDP, addressType, addressRemote, portRemote, rawClientData, log);
-
-	if (!vlessResult) {
-		log('[UDP] VLESS outbound connection failed');
-		safeCloseWebSocket(webSocket);
-		return null;
-	}
 
 	let headerSent = false;
 

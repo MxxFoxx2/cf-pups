@@ -69,6 +69,7 @@ export function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, lo
 export async function remoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader, retry, log) {
 	log(`[remoteSocketToWS] Starting, remoteSocket.readable=${!!remoteSocket?.readable}`);
 	let hasIncomingData = false;
+	let pipeFailed = false;
 
 	try {
 		log(`[remoteSocketToWS] Starting pipeTo...`);
@@ -108,13 +109,20 @@ export async function remoteSocketToWS(remoteSocket, webSocket, protocolResponse
 		);
 		log(`[remoteSocketToWS] pipeTo completed normally`);
 	} catch (error) {
+		pipeFailed = true;
 		log(`[remoteSocketToWS] pipeTo error: ${error.message}`);
 		console.error(`remoteSocketToWS error:`, error.stack || error);
 		safeCloseWebSocket(webSocket);
 	}
 
-	if (!hasIncomingData && retry) {
+	if (!pipeFailed && !hasIncomingData && retry) {
 		log(`[remoteSocketToWS] No incoming data, retrying`);
-		await retry();
+		try {
+			await retry();
+		} catch (error) {
+			log(`[remoteSocketToWS] Retry failed: ${error.message}`);
+			console.error('remoteSocketToWS retry failed:', error.stack || error);
+			safeCloseWebSocket(webSocket);
+		}
 	}
 }

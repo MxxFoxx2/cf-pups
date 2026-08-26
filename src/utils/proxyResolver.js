@@ -215,11 +215,15 @@ export async function connectWithRotation(proxyAddresses, initialData, connect, 
 	for (let i = 0; i < proxyAddresses.length; i++) {
 		const index = (startIndex + i) % proxyAddresses.length;
 		const [address, port] = proxyAddresses[index];
+		/** @type {import("@cloudflare/workers-types").Socket|null} */
+		let socket = null;
+		/** @type {WritableStreamDefaultWriter|null} */
+		let writer = null;
 
 		try {
 			log(`[ProxyRotation] Trying ${address}:${port} (index: ${index})`);
 
-			const socket = connect({ hostname: address, port: port });
+			socket = connect({ hostname: address, port: port });
 
 			// Wait for connection with timeout
 			await Promise.race([
@@ -230,9 +234,10 @@ export async function connectWithRotation(proxyAddresses, initialData, connect, 
 			]);
 
 			// Write initial data
-			const writer = socket.writable.getWriter();
+			writer = socket.writable.getWriter();
 			await writer.write(initialData);
 			writer.releaseLock();
+			writer = null;
 
 			log(`[ProxyRotation] Connected to ${address}:${port}`);
 			cachedProxyIndex = index;
@@ -240,10 +245,20 @@ export async function connectWithRotation(proxyAddresses, initialData, connect, 
 			return { socket, index };
 		} catch (err) {
 			log(`[ProxyRotation] Failed ${address}:${port}: ${err.message}`);
-			// Silently close failed socket
-			try {
-				// socket might not be defined if connect() threw
-			} catch (e) { }
+			if (writer) {
+				try {
+					writer.releaseLock();
+				} catch (closeError) {
+					log(`[ProxyRotation] Writer cleanup failed for ${address}:${port}: ${closeError.message}`);
+				}
+			}
+			if (socket) {
+				try {
+					await socket.close();
+				} catch (closeError) {
+					log(`[ProxyRotation] Socket cleanup failed for ${address}:${port}: ${closeError.message}`);
+				}
+			}
 			continue;
 		}
 	}

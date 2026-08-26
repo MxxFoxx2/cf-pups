@@ -4,6 +4,7 @@
  */
 
 import { WS_READY_STATE_OPEN } from '../config/constants.js';
+import { concatUint8Array, toUint8Array } from '../utils/bytes.js';
 import { safeCloseWebSocket } from '../utils/websocket.js';
 import { vlessOutboundConnect, VLESS_CMD_UDP } from './vless.js';
 
@@ -66,9 +67,7 @@ export async function handleUDPOutbound(webSocket, protocolResponseHeader, addre
 
 					// Add protocol response header to first response
 					if (!headerSent && protocolResponseHeader) {
-						const combined = new Uint8Array(protocolResponseHeader.length + data.length);
-						combined.set(protocolResponseHeader, 0);
-						combined.set(data, protocolResponseHeader.length);
+						const combined = concatUint8Array(toUint8Array(protocolResponseHeader), toUint8Array(data));
 						webSocket.send(combined.buffer);
 						headerSent = true;
 					} else {

@@ -3,18 +3,7 @@
  * Handles UDP datagram framing for VLESS protocol
  */
 
-/**
- * Joins two Uint8Arrays into a single array
- * @param {Uint8Array} arr1 - First array
- * @param {Uint8Array} arr2 - Second array
- * @returns {Uint8Array} Combined array
- */
-export function joinUint8Array(arr1, arr2) {
-	const result = new Uint8Array(arr1.length + arr2.length);
-	result.set(arr1, 0);
-	result.set(arr2, arr1.length);
-	return result;
-}
+import { concatUint8Array } from '../utils/bytes.js';
 
 /**
  * Creates a readable stream that wraps UDP datagrams with length prefix
@@ -29,7 +18,7 @@ export function makeReadableUDPStream(udpClient, log) {
 			udpClient.onmessage((message, info) => {
 				// Prepend 16-bit big-endian length header
 				const header = new Uint8Array([(info.size >> 8) & 0xff, info.size & 0xff]);
-				const encodedChunk = joinUint8Array(header, message);
+				const encodedChunk = concatUint8Array(header, message);
 				controller.enqueue(encodedChunk);
 			});
 
@@ -66,7 +55,7 @@ export function makeWritableUDPStream(udpClient, addressRemote, portRemote, log)
 
 			// Merge with leftover data from previous chunk
 			if (leftoverData.length > 0) {
-				byteArray = joinUint8Array(leftoverData, byteArray);
+				byteArray = concatUint8Array(leftoverData, byteArray);
 				leftoverData = new Uint8Array(0);
 			}
 

@@ -9,6 +9,7 @@ import { getConfig } from '../generators/config-page.js';
 import { genSub, genTrojanSub } from '../generators/subscription.js';
 import { handleProxyConfig, socks5AddressParser, selectRandomAddress, parseEncodedQueryParams, parsePathProxyParams, parseVlessUrl } from '../utils/parser.js';
 import { isValidUUID } from '../utils/validation.js';
+import { parseList } from '../utils/list.js';
 
 // Validate default user ID at startup
 if (!isValidUUID(defaultUserID)) {
@@ -63,8 +64,7 @@ export async function handleRequest(request, env, ctx, connect) {
 		// Validate proxyip format
 		if (urlPROXYIP) {
 			const proxyPattern = /^([a-zA-Z0-9][-a-zA-Z0-9.]*(\.[a-zA-Z0-9][-a-zA-Z0-9.]*)+|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[[0-9a-fA-F:]+\]):\d{1,5}$/;
-			const proxyAddresses = urlPROXYIP.split(',').map(addr => addr.trim());
-			const isValid = proxyAddresses.every(addr => proxyPattern.test(addr));
+			const isValid = parseList(urlPROXYIP).every(addr => proxyPattern.test(addr));
 			if (!isValid) {
 				console.warn('Invalid proxyip format:', urlPROXYIP);
 				urlPROXYIP = null;
@@ -74,8 +74,7 @@ export async function handleRequest(request, env, ctx, connect) {
 		// Validate socks5 format
 		if (urlSOCKS5) {
 			const socks5Pattern = /^(([^:@]+:[^:@]+@)?[a-zA-Z0-9][-a-zA-Z0-9.]*(\.[a-zA-Z0-9][-a-zA-Z0-9.]*)+|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d{1,5}$/;
-			const socks5Addresses = urlSOCKS5.split(',').map(addr => addr.trim());
-			const isValid = socks5Addresses.every(addr => socks5Pattern.test(addr));
+			const isValid = parseList(urlSOCKS5).every(addr => socks5Pattern.test(addr));
 			if (!isValid) {
 				console.warn('Invalid socks5 format:', urlSOCKS5);
 				urlSOCKS5 = null;
@@ -135,7 +134,7 @@ export async function handleRequest(request, env, ctx, connect) {
 			}
 		}
 
-		const userIDs = requestConfig.userID.includes(',') ? requestConfig.userID.split(',').map(id => id.trim()) : [requestConfig.userID];
+		const userIDs = parseList(requestConfig.userID);
 		const host = request.headers.get('Host');
 		const requestedPath = url.pathname.substring(1); // Remove leading slash
 		const matchingUserID = userIDs.length === 1 ?
@@ -161,9 +160,7 @@ export async function handleRequest(request, env, ctx, connect) {
 				if (url.pathname === `/${matchingUserID}` || url.pathname === `/sub/${matchingUserID}`) {
 					const isSubscription = url.pathname.startsWith('/sub/');
 					// Priority: URL parameter > environment variable > default
-					const proxyAddresses = urlPROXYIP
-						? urlPROXYIP.split(',').map(addr => addr.trim())
-						: (PROXYIP ? PROXYIP.split(',').map(addr => addr.trim()) : proxyIPs);
+					const proxyAddresses = parseList(urlPROXYIP || PROXYIP, proxyIPs);
 					// Get Trojan password (priority: env > userID)
 					const trojanPassword = TROJAN_PASSWORD || matchingUserID;
 					const content = isSubscription ?
@@ -180,9 +177,7 @@ export async function handleRequest(request, env, ctx, connect) {
 					});
 				} else if (url.pathname === `/trojan/${matchingUserID}`) {
 					// Trojan-only subscription
-					const proxyAddresses = urlPROXYIP
-						? urlPROXYIP.split(',').map(addr => addr.trim())
-						: (PROXYIP ? PROXYIP.split(',').map(addr => addr.trim()) : proxyIPs);
+					const proxyAddresses = parseList(urlPROXYIP || PROXYIP, proxyIPs);
 					const trojanPassword = TROJAN_PASSWORD || matchingUserID;
 					const content = genTrojanSub(trojanPassword, host, proxyAddresses);
 

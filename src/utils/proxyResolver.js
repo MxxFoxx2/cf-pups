@@ -3,6 +3,9 @@
  * Inspired by ref_code.js multi-proxy rotation mechanism
  */
 
+import { splitHostPort } from './address.js';
+import { parseList } from './list.js';
+
 // Cache for resolved proxy addresses
 let cachedProxyIP = null;
 let cachedProxyAddresses = null;
@@ -35,22 +38,8 @@ async function dohQuery(domain, recordType) {
  * @returns {[string, number]} Tuple of [address, port]
  */
 function parseAddressPort(str) {
-	let address = str;
-	let port = 443;
-
-	if (str.includes(']:')) {
-		// IPv6 with port: [2001:db8::1]:443
-		const parts = str.split(']:');
-		address = parts[0] + ']';
-		port = parseInt(parts[1], 10) || port;
-	} else if (str.includes(':') && !str.startsWith('[')) {
-		// IPv4 or domain with port: 1.2.3.4:443 or domain.com:443
-		const colonIndex = str.lastIndexOf(':');
-		address = str.slice(0, colonIndex);
-		port = parseInt(str.slice(colonIndex + 1), 10) || port;
-	}
-
-	return [address, port];
+	const [address, port] = splitHostPort(str);
+	return [address, parseInt(port, 10) || 443];
 }
 
 /**
@@ -114,12 +103,7 @@ export async function resolveProxyAddresses(proxyIP, targetDomain = 'cloudflare.
 					data = data.slice(1, -1);
 				}
 				// Parse comma/newline separated addresses
-				const addresses = data
-					.replace(/\\010/g, ',')
-					.replace(/\n/g, ',')
-					.split(',')
-					.map(s => s.trim())
-					.filter(Boolean);
+				const addresses = parseList(data.replace(/\\010/g, ',').replace(/\n/g, ','));
 
 				proxyAddresses = addresses.map(addr => parseAddressPort(addr));
 			}

@@ -25,6 +25,17 @@ export function isValidProxyIP(proxyIP) {
 }
 
 /**
+ * Sanitizes a Host header value for safe interpolation into HTML/URLs.
+ * Keeps only characters legal in a hostname (plus optional port).
+ * @param {string|null} host - Host header value
+ * @returns {string} Sanitized host, or empty string if unusable
+ */
+export function sanitizeHost(host) {
+	if (!host) return '';
+	return /^[a-zA-Z0-9.\-:[\]]+$/.test(host) ? host : '';
+}
+
+/**
  * Validates SOCKS5 address format.
  * Supports optional authentication (username:password@) prefix.
  * @param {string} socks5 - SOCKS5 address string to validate

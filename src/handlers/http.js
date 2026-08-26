@@ -2,6 +2,8 @@
  * HTTP response handlers
  */
 
+import { sanitizeHost } from '../utils/validation.js';
+
 /**
  * Handles default path requests when no specific route matches.
  * Generates and returns a cloud drive interface HTML page (disguise).
@@ -10,7 +12,7 @@
  * @returns {Response} HTML response with cloud drive interface
  */
 export async function handleDefaultPath(url, request) {
-	const host = request.headers.get('Host');
+	const host = sanitizeHost(request.headers.get('Host'));
 	const DrivePage = `
 	  <!DOCTYPE html>
 	  <html lang="en">

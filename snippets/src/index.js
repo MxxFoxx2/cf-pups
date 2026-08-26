@@ -56,7 +56,8 @@ export default {
                 ProxyPort
             });
         } catch (err) {
-            return new Response(err && err.stack ? err.stack : String(err), { status: 500 });
+            console.error('Request handling error:', err);
+            return new Response('Internal Server Error', { status: 500 });
         }
     },
 };

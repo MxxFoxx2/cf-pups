@@ -3,6 +3,7 @@
  */
 
 import { stringify } from '../utils/encoding.js';
+import { timingSafeEqual } from '../utils/crypto.js';
 
 /**
  * Processes VLESS protocol header.
@@ -30,10 +31,7 @@ export function processProtocolHeader(protocolBuffer, userID) {
 	const slicedBufferString = stringify(new Uint8Array(protocolBuffer.slice(1, 17)));
 
 	const uuids = userID.includes(',') ? userID.split(",") : [userID];
-	const isValidUser = uuids.some(uuid => slicedBufferString === uuid.trim()) ||
-		(uuids.length === 1 && slicedBufferString === uuids[0].trim());
-
-	console.log(`userID: ${slicedBufferString}`);
+	const isValidUser = uuids.some(uuid => timingSafeEqual(slicedBufferString, uuid.trim()));
 
 	if (!isValidUser) {
 		return { hasError: true, message: 'invalid user' };

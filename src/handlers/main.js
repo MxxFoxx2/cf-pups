@@ -2,18 +2,13 @@
  * Main request handler and routing
  */
 
-import { createRequestConfig, defaultUserID, proxyIPs } from '../config/defaults.js';
+import { createRequestConfig, proxyIPs } from '../config/defaults.js';
 import { handleDefaultPath } from './http.js';
 import { protocolOverWSHandler } from './websocket.js';
 import { getConfig } from '../generators/config-page.js';
 import { genSub, genTrojanSub } from '../generators/subscription.js';
 import { handleProxyConfig, socks5AddressParser, selectRandomAddress, parseEncodedQueryParams, parsePathProxyParams, parseVlessUrl } from '../utils/parser.js';
-import { isValidUUID } from '../utils/validation.js';
-
-// Validate default user ID at startup
-if (!isValidUUID(defaultUserID)) {
-	throw new Error('uuid is not valid');
-}
+import { isValidUUID, sanitizeHost } from '../utils/validation.js';
 
 /**
  * Main request handler for the Cloudflare Worker.
@@ -31,6 +26,12 @@ export async function handleRequest(request, env, ctx, connect) {
 
 		// Create request-specific configuration
 		const requestConfig = createRequestConfig(env);
+
+		// Require an explicitly configured UUID; never fall back to a public default
+		const configuredUserIDs = requestConfig.userID ? requestConfig.userID.split(',').map(id => id.trim()) : [];
+		if (configuredUserIDs.length === 0 || !configuredUserIDs.every(isValidUUID)) {
+			return new Response('Service is not configured: set a valid UUID environment variable', { status: 503 });
+		}
 
 		// Get URL parameters
 		let urlPROXYIP = url.searchParams.get('proxyip');
@@ -86,9 +87,6 @@ export async function handleRequest(request, env, ctx, connect) {
 		requestConfig.socks5Address = urlSOCKS5 || requestConfig.socks5Address;
 		requestConfig.globalProxy = enableGlobalProxy || requestConfig.socks5Relay;
 
-		// Log parameters for debugging
-		console.log('Config params:', requestConfig.userID, requestConfig.socks5Address, requestConfig.globalProxy, urlPROXYIP);
-
 		// Handle proxy configuration
 		const proxyConfig = handleProxyConfig(urlPROXYIP || PROXYIP);
 		requestConfig.proxyIP = proxyConfig.ip;
@@ -135,29 +133,29 @@ export async function handleRequest(request, env, ctx, connect) {
 			}
 		}
 
-		const userIDs = requestConfig.userID.includes(',') ? requestConfig.userID.split(',').map(id => id.trim()) : [requestConfig.userID];
-		const host = request.headers.get('Host');
+		const userIDs = configuredUserIDs;
+		const host = sanitizeHost(request.headers.get('Host'));
 		const requestedPath = url.pathname.substring(1); // Remove leading slash
 		const matchingUserID = userIDs.length === 1 ?
 			(requestedPath === userIDs[0] ||
 				requestedPath === `sub/${userIDs[0]}` ||
 				requestedPath === `bestip/${userIDs[0]}` ||
-				requestedPath === `trojan/${userIDs[0]}` ? userIDs[0] : null) :
+				requestedPath === `trojan/${userIDs[0]}` ||
+				requestedPath === `cf/${userIDs[0]}` ? userIDs[0] : null) :
 			userIDs.find(id => {
-				const patterns = [id, `sub/${id}`, `bestip/${id}`, `trojan/${id}`];
-				return patterns.some(pattern => requestedPath.startsWith(pattern));
+				const patterns = [id, `sub/${id}`, `bestip/${id}`, `trojan/${id}`, `cf/${id}`];
+				return patterns.some(pattern => requestedPath === pattern);
 			});
 
 		// Non-WebSocket requests
 		if (request.headers.get('Upgrade') !== 'websocket') {
-			if (url.pathname === '/cf') {
-				return new Response(JSON.stringify(request.cf, null, 4), {
-					status: 200,
-					headers: { "Content-Type": "application/json;charset=utf-8" },
-				});
-			}
-
 			if (matchingUserID) {
+				if (url.pathname === `/cf/${matchingUserID}`) {
+					return new Response(JSON.stringify(request.cf, null, 4), {
+						status: 200,
+						headers: { "Content-Type": "application/json;charset=utf-8" },
+					});
+				}
 				if (url.pathname === `/${matchingUserID}` || url.pathname === `/sub/${matchingUserID}`) {
 					const isSubscription = url.pathname.startsWith('/sub/');
 					// Priority: URL parameter > environment variable > default
@@ -191,7 +189,7 @@ export async function handleRequest(request, env, ctx, connect) {
 						headers: { "Content-Type": "text/plain;charset=utf-8" },
 					});
 				} else if (url.pathname === `/bestip/${matchingUserID}`) {
-					return fetch(`https://bestip.06151953.xyz/auto?host=${host}&uuid=${matchingUserID}&path=/`, { headers: request.headers });
+					return fetch(`https://bestip.06151953.xyz/auto?host=${encodeURIComponent(host)}&uuid=${encodeURIComponent(matchingUserID)}&path=/`, { headers: request.headers });
 				}
 			}
 			return handleDefaultPath(url, request);
@@ -200,6 +198,7 @@ export async function handleRequest(request, env, ctx, connect) {
 			return await protocolOverWSHandler(request, requestConfig, connect);
 		}
 	} catch (err) {
-		return new Response(err.toString());
+		console.error('Request handling error:', err);
+		return new Response('Internal Server Error', { status: 500 });
 	}
 }

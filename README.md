@@ -45,7 +45,7 @@ A proxy tool based on Cloudflare Workers and Pages, supporting multiple protocol
 
 | Variable | Required | Example | Description |
 |----------|----------|---------|-------------|
-| `UUID` | No | Single: `12345678-1234-1234-1234-123456789012`<br>Multiple: `uuid1,uuid2,uuid3` | User identification |
+| `UUID` | Yes | Single: `12345678-1234-1234-1234-123456789012`<br>Multiple: `uuid1,uuid2,uuid3` | User identification (set as a secret; the worker refuses requests until it is configured) |
 | `PROXYIP` | No | `1.1.1.1` or `example.com`<br>Multiple: `1.1.1.1:9443,2.2.2.2:8443` | Custom proxy IP and port |
 | `SOCKS5` | No | `user:pass@host:port`<br>Multiple: `user1:pass1@host1:port1,user2:pass2@host2:port2` | SOCKS5 proxy configuration |
 | `SOCKS5_RELAY` | No | `true` or `false` | Enable SOCKS5 traffic relay |

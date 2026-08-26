@@ -3,6 +3,7 @@
  */
 
 import { WS_READY_STATE_OPEN } from '../config/constants.js';
+import { concatUint8Array, toUint8Array } from '../utils/bytes.js';
 import { base64ToArrayBuffer } from '../utils/encoding.js';
 import { safeCloseWebSocket } from '../utils/websocket.js';
 
@@ -85,11 +86,7 @@ export async function remoteSocketToWS(remoteSocket, webSocket, protocolResponse
 					hasIncomingData = true;
 
 					if (protocolResponseHeader) {
-						const header = new Uint8Array(protocolResponseHeader);
-						const data = new Uint8Array(chunk);
-						const combined = new Uint8Array(header.length + data.length);
-						combined.set(header, 0);
-						combined.set(data, header.length);
+						const combined = concatUint8Array(toUint8Array(protocolResponseHeader), toUint8Array(chunk));
 						log(`[remoteSocketToWS] Sending first chunk with header, total size=${combined.length}`);
 						webSocket.send(combined.buffer);
 						protocolResponseHeader = null;

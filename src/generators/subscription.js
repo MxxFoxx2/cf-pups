@@ -2,8 +2,11 @@
  * Subscription content generator
  */
 
-import { at, pt, ed, trojanPt, HttpPort, HttpsPort } from '../config/constants.js';
+import { ed, HttpPort, HttpsPort } from '../config/constants.js';
 import { proxyIPs } from '../config/defaults.js';
+import { splitHostPort } from '../utils/address.js';
+import { parseList } from '../utils/list.js';
+import { buildTrojanUrl, buildVlessUrl } from './urls.js';
 
 /**
  * Generates subscription content with VLESS and Trojan URLs.
@@ -47,8 +50,8 @@ export function genSub(userID_path, hostname, proxyIP, trojanPassword = null) {
 		'cfip.xxxxxxxx.tk',              // OTC maintained
 	]);
 
-	const userIDArray = userID_path.includes(',') ? userID_path.split(",") : [userID_path];
-	const proxyIPArray = Array.isArray(proxyIP) ? proxyIP : (proxyIP ? (proxyIP.includes(',') ? proxyIP.split(',') : [proxyIP]) : proxyIPs);
+	const userIDArray = parseList(userID_path);
+	const proxyIPArray = parseList(proxyIP, proxyIPs);
 	const randomPath = () => '/' + Math.random().toString(36).substring(2, 15) + '?ed=2048';
 	const commonUrlPartHttp = `?encryption=none&security=none&fp=random&type=ws&host=${hostname}&path=${encodeURIComponent(randomPath())}#`;
 	const commonUrlPartHttps = `?encryption=none&security=tls&sni=${hostname}&fp=random&type=ws&host=${hostname}&path=%2F%3Fed%3D2048#`;
@@ -60,8 +63,7 @@ export function genSub(userID_path, hostname, proxyIP, trojanPassword = null) {
 			mainDomains.forEach(domain => {
 				Array.from(HttpPort).forEach((port) => {
 					const urlPart = `${hostname.split('.')[0]}-${domain}-HTTP-${port}`;
-					const mainProtocolHttp = atob(pt) + '://' + userID + atob(at) + domain + ':' + port + commonUrlPartHttp + urlPart;
-					allUrls.push(mainProtocolHttp);
+					allUrls.push(buildVlessUrl(userID, domain, port, commonUrlPartHttp + urlPart));
 				});
 			});
 		}
@@ -70,17 +72,15 @@ export function genSub(userID_path, hostname, proxyIP, trojanPassword = null) {
 		mainDomains.forEach(domain => {
 			Array.from(HttpsPort).forEach((port) => {
 				const urlPart = `${hostname.split('.')[0]}-${domain}-HTTPS-${port}`;
-				const mainProtocolHttps = atob(pt) + '://' + userID + atob(at) + domain + ':' + port + commonUrlPartHttps + urlPart;
-				allUrls.push(mainProtocolHttps);
+				allUrls.push(buildVlessUrl(userID, domain, port, commonUrlPartHttps + urlPart));
 			});
 		});
 
 		// Generate proxy HTTPS URLs
 		proxyIPArray.forEach((proxyAddr) => {
-			const [proxyHost, proxyPort = '443'] = proxyAddr.split(':');
+			const [proxyHost, proxyPort] = splitHostPort(proxyAddr);
 			const urlPart = `${hostname.split('.')[0]}-${proxyHost}-HTTPS-${proxyPort}`;
-			const secondaryProtocolHttps = atob(pt) + '://' + userID + atob(at) + proxyHost + ':' + proxyPort + commonUrlPartHttps + urlPart + '-' + atob(ed);
-			allUrls.push(secondaryProtocolHttps);
+			allUrls.push(buildVlessUrl(userID, proxyHost, proxyPort, commonUrlPartHttps + urlPart + '-' + atob(ed)));
 		});
 
 		return allUrls;
@@ -102,22 +102,19 @@ export function genSub(userID_path, hostname, proxyIP, trojanPassword = null) {
  */
 function generateTrojanUrls(password, hostname, proxyIPArray) {
 	const urls = [];
-	const encodedPassword = encodeURIComponent(password);
 	const commonParams = `?security=tls&type=ws&host=${hostname}&path=%2F%3Fed%3D2048&sni=${hostname}`;
 
 	// Main hostname Trojan URLs (HTTPS ports only)
 	Array.from(HttpsPort).forEach((port) => {
 		const urlPart = `${hostname.split('.')[0]}-Trojan-HTTPS-${port}`;
-		const trojanUrl = `${atob(trojanPt)}://${encodedPassword}@${hostname}:${port}${commonParams}#${urlPart}`;
-		urls.push(trojanUrl);
+		urls.push(buildTrojanUrl(password, hostname, port, `${commonParams}#${urlPart}`));
 	});
 
 	// Proxy IP Trojan URLs
 	proxyIPArray.forEach((proxyAddr) => {
-		const [proxyHost, proxyPort = '443'] = proxyAddr.split(':');
+		const [proxyHost, proxyPort] = splitHostPort(proxyAddr);
 		const urlPart = `${hostname.split('.')[0]}-${proxyHost}-Trojan-${proxyPort}`;
-		const trojanUrl = `${atob(trojanPt)}://${encodedPassword}@${proxyHost}:${proxyPort}${commonParams}#${urlPart}`;
-		urls.push(trojanUrl);
+		urls.push(buildTrojanUrl(password, proxyHost, proxyPort, `${commonParams}#${urlPart}`));
 	});
 
 	return urls;
@@ -131,7 +128,7 @@ function generateTrojanUrls(password, hostname, proxyIPArray) {
  * @returns {string} Base64 encoded Trojan subscription content
  */
 export function genTrojanSub(password, hostname, proxyIP) {
-	const proxyIPArray = Array.isArray(proxyIP) ? proxyIP : (proxyIP ? (proxyIP.includes(',') ? proxyIP.split(',') : [proxyIP]) : proxyIPs);
+	const proxyIPArray = parseList(proxyIP, proxyIPs);
 	const urls = generateTrojanUrls(password, hostname, proxyIPArray);
 	return btoa(urls.join('\n'));
 }

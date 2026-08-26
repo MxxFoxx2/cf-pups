@@ -3,6 +3,8 @@
  */
 
 import { proxyIPs } from '../config/defaults.js';
+import { splitHostPort } from './address.js';
+import { parseList } from './list.js';
 
 /**
  * Parses a VLESS URL into configuration object
@@ -145,18 +147,9 @@ export function socks5AddressParser(address) {
  * @returns {{ip: string, port: string}} Standardized proxy configuration
  */
 export function handleProxyConfig(PROXYIP) {
-	if (PROXYIP) {
-		const proxyAddresses = PROXYIP.split(',').map(addr => addr.trim());
-		const selectedProxy = selectRandomAddress(proxyAddresses);
-		const [ip, port = '443'] = selectedProxy.split(':');
-		return { ip, port };
-	} else {
-		// Use default from proxyIPs
-		const defaultProxy = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
-		const port = defaultProxy.includes(':') ? defaultProxy.split(':')[1] : '443';
-		const ip = defaultProxy.split(':')[0];
-		return { ip, port };
-	}
+	const selectedProxy = selectRandomAddress(parseList(PROXYIP, proxyIPs));
+	const [ip, port] = splitHostPort(selectedProxy);
+	return { ip, port };
 }
 
 /**
@@ -165,9 +158,7 @@ export function handleProxyConfig(PROXYIP) {
  * @returns {string} Selected address
  */
 export function selectRandomAddress(addresses) {
-	const addressArray = typeof addresses === 'string' ?
-		addresses.split(',').map(addr => addr.trim()) :
-		addresses;
+	const addressArray = typeof addresses === 'string' ? parseList(addresses) : addresses;
 	return addressArray[Math.floor(Math.random() * addressArray.length)];
 }
 

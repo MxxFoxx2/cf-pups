@@ -4,6 +4,7 @@
  */
 
 import { WS_READY_STATE_OPEN } from '../config/constants.js';
+import { concatUint8Array, toUint8Array } from '../utils/bytes.js';
 import { safeCloseWebSocket } from '../utils/websocket.js';
 
 /**
@@ -261,7 +262,7 @@ export async function vlessOutboundConnect(config, command, addressType, address
 				log('[VLESS] ReadableStream start called, adding message listener');
 				ws.addEventListener('message', (event) => {
 					log(`[VLESS] Message received from VLESS server, size=${event.data?.byteLength || 'unknown'}`);
-					let data = new Uint8Array(event.data);
+					let data = toUint8Array(event.data);
 
 					// Strip VLESS response header on first message
 					// Format: [version (1 byte)] [additional info length (1 byte)] [additional info (N bytes)]
@@ -319,25 +320,11 @@ export async function vlessOutboundConnect(config, command, addressType, address
 		log(`[VLESS] Generating header for command=${command}, addressType=${addressType}, address=${addressRemote}, port=${portRemote}`);
 		const vlessHeader = makeVlessRequestHeader(command, addressType, addressRemote, portRemote, config.uuid);
 
-		// Ensure rawClientData is a Uint8Array (it might be ArrayBuffer)
-		let clientData;
-		if (rawClientData instanceof ArrayBuffer) {
-			clientData = new Uint8Array(rawClientData);
-		} else if (rawClientData instanceof Uint8Array) {
-			clientData = rawClientData;
-		} else if (rawClientData && rawClientData.buffer instanceof ArrayBuffer) {
-			// It's already a typed array view
-			clientData = new Uint8Array(rawClientData.buffer, rawClientData.byteOffset, rawClientData.byteLength);
-		} else {
-			// Fallback: try to create from whatever we have
-			clientData = new Uint8Array(rawClientData || 0);
-		}
+		const clientData = toUint8Array(rawClientData);
 
 		log(`[VLESS] Header generated, length=${vlessHeader.length}, clientData length=${clientData.length}`);
 
-		const firstPacket = new Uint8Array(vlessHeader.length + clientData.length);
-		firstPacket.set(vlessHeader, 0);
-		firstPacket.set(clientData, vlessHeader.length);
+		const firstPacket = concatUint8Array(vlessHeader, clientData);
 
 		log(`[VLESS] Sending first packet, total length=${firstPacket.length}, ws.readyState=${ws.readyState}`);
 		ws.send(firstPacket);

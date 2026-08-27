@@ -9,6 +9,11 @@ EDtunnel is a Cloudflare Worker/Pages-based proxy tool that implements WebSocket
 ## Development Commands
 
 ```bash
+# Tests (Vitest, tests/ mirrors src/)
+npm test             # Run unit tests once
+npm run test:watch   # Watch mode
+npm run test:coverage # Run tests with a v8 coverage report
+
 # Local development
 npm run dev          # Development with Wrangler (remote mode)
 npm run dev-local    # Local development with src/index.js

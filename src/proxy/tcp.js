@@ -26,6 +26,26 @@ import { vlessOutboundConnect, VLESS_CMD_TCP } from './vless.js';
  */
 export async function handleTCPOutBound(remoteSocket, addressType, addressRemote, portRemote, rawClientData, webSocket, protocolResponseHeader, log, config, connect) {
 
+	async function writeInitialData(tcpSocket, data, connectionName) {
+		const writer = tcpSocket.writable.getWriter();
+		try {
+			await writer.write(data);
+			writer.releaseLock();
+		} catch (error) {
+			try {
+				writer.releaseLock();
+			} catch (closeError) {
+				log(`[TCP] ${connectionName} writer cleanup failed: ${closeError.message}`);
+			}
+			try {
+				await tcpSocket.close();
+			} catch (closeError) {
+				log(`[TCP] ${connectionName} socket cleanup failed: ${closeError.message}`);
+			}
+			throw error;
+		}
+	}
+
 	/**
 	 * Connects to target via VLESS, SOCKS5 or HTTP proxy
 	 * @returns {Promise<import("@cloudflare/workers-types").Socket|{readable: ReadableStream, writable: WritableStream, closed: Promise<void>}>}
@@ -42,9 +62,6 @@ export async function handleTCPOutBound(remoteSocket, addressType, addressRemote
 				rawClientData,
 				log
 			);
-			if (!vlessResult) {
-				throw new Error('VLESS outbound connection failed');
-			}
 			// Return a socket-like object that wraps the streams
 			return {
 				readable: vlessResult.readable,
@@ -53,21 +70,12 @@ export async function handleTCPOutBound(remoteSocket, addressType, addressRemote
 			};
 		} else if (config.proxyType === 'http') {
 			log(`[TCP] Connecting via HTTP proxy to ${addressRemote}:${portRemote}`);
-			const tcpSocket = await httpConnect(addressType, addressRemote, portRemote, log, config.parsedProxyAddress, connect, rawClientData);
-			if (!tcpSocket) {
-				throw new Error('HTTP proxy connection failed');
-			}
-			return tcpSocket;
+			return await httpConnect(addressType, addressRemote, portRemote, log, config.parsedProxyAddress, connect, rawClientData);
 		} else {
 			log(`[TCP] Connecting via SOCKS5 proxy to ${addressRemote}:${portRemote}`);
 			const tcpSocket = await socks5Connect(addressType, addressRemote, portRemote, log, config.parsedProxyAddress, connect);
-			if (!tcpSocket) {
-				throw new Error('SOCKS5 proxy connection failed');
-			}
 			// Write initial data for SOCKS5 (HTTP proxy handles internally)
-			const writer = tcpSocket.writable.getWriter();
-			await writer.write(rawClientData);
-			writer.releaseLock();
+			await writeInitialData(tcpSocket, rawClientData, 'SOCKS5');
 			return tcpSocket;
 		}
 	}
@@ -81,10 +89,17 @@ export async function handleTCPOutBound(remoteSocket, addressType, addressRemote
 	async function connectDirect(address, port) {
 		log(`[TCP] Direct connecting to ${address}:${port}`);
 		const tcpSocket = connect({ hostname: address, port: port });
-		const writer = tcpSocket.writable.getWriter();
-		await writer.write(rawClientData);
-		writer.releaseLock();
+		await writeInitialData(tcpSocket, rawClientData, 'direct');
 		return tcpSocket;
+	}
+
+	function startRemotePipe(tcpSocket, retryHandler) {
+		remoteSocketToWS(tcpSocket, webSocket, protocolResponseHeader, retryHandler, log)
+			.catch((error) => {
+				log(`[TCP] Remote stream failed: ${error.message}`);
+				console.error('Remote stream failed:', error.stack || error);
+				safeCloseWebSocket(webSocket);
+			});
 	}
 
 	/**
@@ -152,7 +167,7 @@ export async function handleTCPOutBound(remoteSocket, addressType, addressRemote
 			safeCloseWebSocket(webSocket);
 		});
 
-		remoteSocketToWS(tcpSocket, webSocket, protocolResponseHeader, null, log);
+		startRemotePipe(tcpSocket, null);
 	}
 
 	// Main connection logic
@@ -164,13 +179,7 @@ export async function handleTCPOutBound(remoteSocket, addressType, addressRemote
 		// Global proxy mode: use SOCKS5/HTTP/VLESS proxy directly
 		log(`[TCP] Using ${config.proxyType.toUpperCase()} proxy (global mode)`);
 		tcpSocket = await connectViaProxy();
-		log(`[TCP] connectViaProxy returned, tcpSocket=${tcpSocket ? 'valid' : 'null'}`);
-
-		if (!tcpSocket) {
-			log('[TCP] VLESS connection returned null, closing WebSocket');
-			safeCloseWebSocket(webSocket);
-			return;
-		}
+		log(`[TCP] connectViaProxy returned`);
 
 		remoteSocket.value = tcpSocket;
 		log(`[TCP] Setting up closed handler`);
@@ -183,14 +192,14 @@ export async function handleTCPOutBound(remoteSocket, addressType, addressRemote
 		});
 
 		log(`[TCP] Calling remoteSocketToWS`);
-		remoteSocketToWS(tcpSocket, webSocket, protocolResponseHeader, null, log);
+		startRemotePipe(tcpSocket, null);
 	} else {
 		// Standard mode: try direct first, then retry with proxy
 		try {
 			tcpSocket = await connectDirect(addressRemote, portRemote);
 			remoteSocket.value = tcpSocket;
 			// Pass retry function - will be called if no incoming data
-			remoteSocketToWS(tcpSocket, webSocket, protocolResponseHeader, retry, log);
+			startRemotePipe(tcpSocket, retry);
 		} catch (err) {
 			log(`[TCP] Direct connection failed: ${err.message}, trying proxies`);
 			await retry();

@@ -3,6 +3,7 @@
  */
 
 import { WS_READY_STATE_OPEN } from '../config/constants.js';
+import { concatUint8Array, toUint8Array } from '../utils/bytes.js';
 import { base64ToArrayBuffer } from '../utils/encoding.js';
 import { safeCloseWebSocket } from '../utils/websocket.js';
 
@@ -69,6 +70,7 @@ export function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, lo
 export async function remoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader, retry, log) {
 	log(`[remoteSocketToWS] Starting, remoteSocket.readable=${!!remoteSocket?.readable}`);
 	let hasIncomingData = false;
+	let pipeFailed = false;
 
 	try {
 		log(`[remoteSocketToWS] Starting pipeTo...`);
@@ -84,11 +86,7 @@ export async function remoteSocketToWS(remoteSocket, webSocket, protocolResponse
 					hasIncomingData = true;
 
 					if (protocolResponseHeader) {
-						const header = new Uint8Array(protocolResponseHeader);
-						const data = new Uint8Array(chunk);
-						const combined = new Uint8Array(header.length + data.length);
-						combined.set(header, 0);
-						combined.set(data, header.length);
+						const combined = concatUint8Array(toUint8Array(protocolResponseHeader), toUint8Array(chunk));
 						log(`[remoteSocketToWS] Sending first chunk with header, total size=${combined.length}`);
 						webSocket.send(combined.buffer);
 						protocolResponseHeader = null;
@@ -108,13 +106,20 @@ export async function remoteSocketToWS(remoteSocket, webSocket, protocolResponse
 		);
 		log(`[remoteSocketToWS] pipeTo completed normally`);
 	} catch (error) {
+		pipeFailed = true;
 		log(`[remoteSocketToWS] pipeTo error: ${error.message}`);
 		console.error(`remoteSocketToWS error:`, error.stack || error);
 		safeCloseWebSocket(webSocket);
 	}
 
-	if (!hasIncomingData && retry) {
+	if (!pipeFailed && !hasIncomingData && retry) {
 		log(`[remoteSocketToWS] No incoming data, retrying`);
-		await retry();
+		try {
+			await retry();
+		} catch (error) {
+			log(`[remoteSocketToWS] Retry failed: ${error.message}`);
+			console.error('remoteSocketToWS retry failed:', error.stack || error);
+			safeCloseWebSocket(webSocket);
+		}
 	}
 }

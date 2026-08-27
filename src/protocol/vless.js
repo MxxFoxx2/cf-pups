@@ -27,8 +27,9 @@ export function processProtocolHeader(protocolBuffer, userID) {
 	}
 
 	const dataView = new DataView(protocolBuffer);
+	const bytes = new Uint8Array(protocolBuffer);
 	const version = dataView.getUint8(0);
-	const slicedBufferString = stringify(new Uint8Array(protocolBuffer.slice(1, 17)));
+	const slicedBufferString = stringify(bytes.slice(1, 17));
 
 	const uuids = userID.includes(',') ? userID.split(",") : [userID];
 	const isValidUser = uuids.some(uuid => timingSafeEqual(slicedBufferString, uuid.trim()));
@@ -47,27 +48,17 @@ export function processProtocolHeader(protocolBuffer, userID) {
 	const portIndex = 18 + optLength + 1;
 	const portRemote = dataView.getUint16(portIndex);
 	const addressType = dataView.getUint8(portIndex + 2);
-	let addressValue, addressLength, addressValueIndex;
+	const addressKind = ADDRESS_KINDS[addressType];
 
-	switch (addressType) {
-		case 1: // IPv4
-			addressLength = 4;
-			addressValueIndex = portIndex + 3;
-			addressValue = new Uint8Array(protocolBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join('.');
-			break;
-		case 2: // Domain
-			addressLength = dataView.getUint8(portIndex + 3);
-			addressValueIndex = portIndex + 4;
-			addressValue = new TextDecoder().decode(protocolBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
-			break;
-		case 3: // IPv6
-			addressLength = 16;
-			addressValueIndex = portIndex + 3;
-			addressValue = Array.from({ length: 8 }, (_, i) => dataView.getUint16(addressValueIndex + i * 2).toString(16)).join(':');
-			break;
-		default:
-			return { hasError: true, message: `invalid addressType: ${addressType}` };
+	if (!addressKind) {
+		return { hasError: true, message: `invalid addressType: ${addressType}` };
 	}
+
+	const {
+		address: addressValue,
+		length: addressLength,
+		valueIndex: addressValueIndex
+	} = readAddress(bytes, dataView, addressKind, portIndex + 3);
 
 	if (!addressValue) {
 		return { hasError: true, message: `addressValue is empty, addressType is ${addressType}` };

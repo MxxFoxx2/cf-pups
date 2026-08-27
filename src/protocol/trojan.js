@@ -7,6 +7,16 @@
 
 import { sha224, timingSafeEqual } from '../utils/crypto.js';
 import { TROJAN_CMD_TCP, TROJAN_CMD_UDP } from '../config/constants.js';
+import { ADDRESS_KIND_DOMAIN, ADDRESS_KIND_IPV4, ADDRESS_KIND_IPV6, readAddress } from '../utils/address.js';
+
+/**
+ * Maps Trojan address type bytes to shared address kinds
+ */
+const ADDRESS_KINDS = {
+	1: ADDRESS_KIND_IPV4,
+	3: ADDRESS_KIND_DOMAIN,
+	4: ADDRESS_KIND_IPV6
+};
 
 /**
  * Detects if buffer contains Trojan protocol header by checking password hash
@@ -81,37 +91,21 @@ export function processTrojanHeader(buffer, password) {
 
 	// Parse address type at byte 59
 	const addressType = bytes[59];
-	let addressValue, addressLength, addressValueIndex;
+	const addressKind = ADDRESS_KINDS[addressType];
 
-	switch (addressType) {
-		case 1: // IPv4
-			addressLength = 4;
-			addressValueIndex = 60;
-			if (buffer.byteLength < addressValueIndex + addressLength + 2) {
-				return { hasError: true, message: 'Invalid Trojan header: IPv4 address truncated' };
-			}
-			addressValue = Array.from(bytes.slice(addressValueIndex, addressValueIndex + addressLength)).join('.');
-			break;
-		case 3: // Domain name
-			addressLength = bytes[60];
-			addressValueIndex = 61;
-			if (buffer.byteLength < addressValueIndex + addressLength + 2) {
-				return { hasError: true, message: 'Invalid Trojan header: domain name truncated' };
-			}
-			addressValue = new TextDecoder().decode(bytes.slice(addressValueIndex, addressValueIndex + addressLength));
-			break;
-		case 4: // IPv6
-			addressLength = 16;
-			addressValueIndex = 60;
-			if (buffer.byteLength < addressValueIndex + addressLength + 2) {
-				return { hasError: true, message: 'Invalid Trojan header: IPv6 address truncated' };
-			}
-			addressValue = Array.from({ length: 8 }, (_, i) =>
-				dataView.getUint16(addressValueIndex + i * 2).toString(16)
-			).join(':');
-			break;
-		default:
-			return { hasError: true, message: `Invalid Trojan address type: ${addressType}` };
+	if (!addressKind) {
+		return { hasError: true, message: `Invalid Trojan address type: ${addressType}` };
+	}
+
+	const {
+		address: addressValue,
+		length: addressLength,
+		valueIndex: addressValueIndex
+	} = readAddress(bytes, dataView, addressKind, 60);
+
+	// Address must be followed by the 2-byte port field
+	if (buffer.byteLength < addressValueIndex + addressLength + 2) {
+		return { hasError: true, message: `Invalid Trojan header: address truncated (type ${addressType})` };
 	}
 
 	// Parse port (2 bytes, big-endian, after address)

@@ -8,6 +8,7 @@ import { handleDNSQuery } from '../protocol/dns.js';
 import { processProtocolHeader } from '../protocol/vless.js';
 import { isTrojanProtocol, processTrojanHeader } from '../protocol/trojan.js';
 import { canHandleUDP, handleUDPOutbound } from '../proxy/udp-handler.js';
+import { safeCloseWebSocket } from '../utils/websocket.js';
 
 /**
  * Handles protocol over WebSocket requests.
@@ -121,7 +122,7 @@ export async function protocolOverWSHandler(request, config, connect) {
 			if (isDns) {
 				return handleDNSQuery(rawClientData, webSocket, protocolResponseHeader, log, connect);
 			}
-			handleTCPOutBound(remoteSocketWrapper, addressType, addressRemote, portRemote, rawClientData, webSocket, protocolResponseHeader, log, config, connect);
+			await handleTCPOutBound(remoteSocketWrapper, addressType, addressRemote, portRemote, rawClientData, webSocket, protocolResponseHeader, log, config, connect);
 		},
 		close() {
 			log(`readableWebSocketStream is close`);
@@ -130,7 +131,9 @@ export async function protocolOverWSHandler(request, config, connect) {
 			log(`readableWebSocketStream is abort`, JSON.stringify(reason));
 		},
 	})).catch((err) => {
-		log('readableWebSocketStream pipeTo error', err);
+		log('readableWebSocketStream pipeTo error', err?.message || err);
+		console.error('readableWebSocketStream pipeTo error:', err?.stack || err);
+		safeCloseWebSocket(webSocket);
 	});
 
 	return new Response(null, {

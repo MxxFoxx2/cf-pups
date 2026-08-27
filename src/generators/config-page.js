@@ -3,7 +3,9 @@
  */
 
 import { at, pt, trojanPt } from '../config/constants.js';
-import { proxyIPs } from '../config/defaults.js';
+import { splitHostPort } from '../utils/address.js';
+import { parseList } from '../utils/list.js';
+import { buildTrojanUrl, buildVlessUrl } from './urls.js';
 
 /**
  * Generates configuration HTML page for VLESS and Trojan clients.
@@ -16,12 +18,12 @@ import { proxyIPs } from '../config/defaults.js';
 export function getConfig(userIDs, hostName, proxyIP, trojanPassword = null) {
 	// Get proxy port from first proxy address
 	const firstProxy = Array.isArray(proxyIP) ? proxyIP[0] : proxyIP;
-	const proxyPort = firstProxy.includes(':') ? firstProxy.split(':')[1] : '443';
+	const [firstProxyHost, proxyPort] = splitHostPort(firstProxy);
 
 	const commonUrlPart = `?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2048#${hostName}`;
 
 	// Split the userIDs into an array
-	const userIDArray = userIDs.split(",");
+	const userIDArray = parseList(userIDs);
 
 	// Trojan password (use provided or default to first userID)
 	const effectiveTrojanPassword = trojanPassword || userIDArray[0];
@@ -198,14 +200,12 @@ export function getConfig(userIDs, hostName, proxyIP, trojanPassword = null) {
   `;
 
 	// Generate Trojan configuration
-	const trojanMain = atob(trojanPt) + '://' + encodeURIComponent(effectiveTrojanPassword) + atob(at) + hostName + ":443" + trojanCommonUrlPart;
-	const firstProxyHostForTrojan = (Array.isArray(proxyIP) ? proxyIP[0] : proxyIP).split(':')[0];
-	const trojanSec = atob(trojanPt) + '://' + encodeURIComponent(effectiveTrojanPassword) + atob(at) + firstProxyHostForTrojan + ":" + proxyPort + trojanCommonUrlPart;
+	const trojanMain = buildTrojanUrl(effectiveTrojanPassword, hostName, '443', trojanCommonUrlPart);
+	const trojanSec = buildTrojanUrl(effectiveTrojanPassword, firstProxyHost, proxyPort, trojanCommonUrlPart);
 
 	const configOutput = userIDArray.map((userID) => {
-		const protocolMain = atob(pt) + '://' + userID + atob(at) + hostName + ":443" + commonUrlPart;
-		const firstProxyHost = (Array.isArray(proxyIP) ? proxyIP[0] : proxyIP).split(':')[0];
-		const protocolSec = atob(pt) + '://' + userID + atob(at) + firstProxyHost + ":" + proxyPort + commonUrlPart;
+		const protocolMain = buildVlessUrl(userID, hostName, '443', commonUrlPart);
+		const protocolSec = buildVlessUrl(userID, firstProxyHost, proxyPort, commonUrlPart);
 		return `
       <div class="container config-item">
         <h2>UUID: ${userID}</h2>

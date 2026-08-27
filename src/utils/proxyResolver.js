@@ -3,6 +3,9 @@
  * Inspired by ref_code.js multi-proxy rotation mechanism
  */
 
+import { splitHostPort } from './address.js';
+import { parseList } from './list.js';
+
 // Cache for resolved proxy addresses
 let cachedProxyIP = null;
 let cachedProxyAddresses = null;
@@ -35,22 +38,8 @@ async function dohQuery(domain, recordType) {
  * @returns {[string, number]} Tuple of [address, port]
  */
 function parseAddressPort(str) {
-	let address = str;
-	let port = 443;
-
-	if (str.includes(']:')) {
-		// IPv6 with port: [2001:db8::1]:443
-		const parts = str.split(']:');
-		address = parts[0] + ']';
-		port = parseInt(parts[1], 10) || port;
-	} else if (str.includes(':') && !str.startsWith('[')) {
-		// IPv4 or domain with port: 1.2.3.4:443 or domain.com:443
-		const colonIndex = str.lastIndexOf(':');
-		address = str.slice(0, colonIndex);
-		port = parseInt(str.slice(colonIndex + 1), 10) || port;
-	}
-
-	return [address, port];
+	const [address, port] = splitHostPort(str);
+	return [address, parseInt(port, 10) || 443];
 }
 
 /**
@@ -114,12 +103,7 @@ export async function resolveProxyAddresses(proxyIP, targetDomain = 'cloudflare.
 					data = data.slice(1, -1);
 				}
 				// Parse comma/newline separated addresses
-				const addresses = data
-					.replace(/\\010/g, ',')
-					.replace(/\n/g, ',')
-					.split(',')
-					.map(s => s.trim())
-					.filter(Boolean);
+				const addresses = parseList(data.replace(/\\010/g, ',').replace(/\n/g, ','));
 
 				proxyAddresses = addresses.map(addr => parseAddressPort(addr));
 			}
@@ -215,11 +199,15 @@ export async function connectWithRotation(proxyAddresses, initialData, connect, 
 	for (let i = 0; i < proxyAddresses.length; i++) {
 		const index = (startIndex + i) % proxyAddresses.length;
 		const [address, port] = proxyAddresses[index];
+		/** @type {import("@cloudflare/workers-types").Socket|null} */
+		let socket = null;
+		/** @type {WritableStreamDefaultWriter|null} */
+		let writer = null;
 
 		try {
 			log(`[ProxyRotation] Trying ${address}:${port} (index: ${index})`);
 
-			const socket = connect({ hostname: address, port: port });
+			socket = connect({ hostname: address, port: port });
 
 			// Wait for connection with timeout
 			await Promise.race([
@@ -230,9 +218,10 @@ export async function connectWithRotation(proxyAddresses, initialData, connect, 
 			]);
 
 			// Write initial data
-			const writer = socket.writable.getWriter();
+			writer = socket.writable.getWriter();
 			await writer.write(initialData);
 			writer.releaseLock();
+			writer = null;
 
 			log(`[ProxyRotation] Connected to ${address}:${port}`);
 			cachedProxyIndex = index;
@@ -240,10 +229,20 @@ export async function connectWithRotation(proxyAddresses, initialData, connect, 
 			return { socket, index };
 		} catch (err) {
 			log(`[ProxyRotation] Failed ${address}:${port}: ${err.message}`);
-			// Silently close failed socket
-			try {
-				// socket might not be defined if connect() threw
-			} catch (e) { }
+			if (writer) {
+				try {
+					writer.releaseLock();
+				} catch (closeError) {
+					log(`[ProxyRotation] Writer cleanup failed for ${address}:${port}: ${closeError.message}`);
+				}
+			}
+			if (socket) {
+				try {
+					await socket.close();
+				} catch (closeError) {
+					log(`[ProxyRotation] Socket cleanup failed for ${address}:${port}: ${closeError.message}`);
+				}
+			}
 			continue;
 		}
 	}

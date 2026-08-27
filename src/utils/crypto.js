@@ -116,3 +116,20 @@ export function sha224(str) {
 export function hashTrojanPassword(password) {
 	return sha224(password);
 }
+
+/**
+ * Compares two strings in constant time to prevent timing attacks
+ * @param {string} a - First string
+ * @param {string} b - Second string
+ * @returns {boolean} True if strings are equal
+ */
+export function timingSafeEqual(a, b) {
+	if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) {
+		return false;
+	}
+	let diff = 0;
+	for (let i = 0; i < a.length; i++) {
+		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	}
+	return diff === 0;
+}

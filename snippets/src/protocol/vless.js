@@ -1,6 +1,18 @@
 import { UUID } from '../config.js';
 
 /**
+ * 恒定时间字符串比较，防止时序攻击
+ */
+function timingSafeEqual(a, b) {
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
+}
+
+/**
  * 格式化 UUID 字节数组为字符串
  */
 function formatUUID(bytes) {
@@ -18,7 +30,7 @@ export function parseVLESSHeader(buffer) {
     const view = new DataView(buffer);
     const version = new Uint8Array(buffer.slice(0, 1));
     const uuid = formatUUID(new Uint8Array(buffer.slice(1, 17)));
-    if (uuid !== UUID) {
+    if (!UUID || !timingSafeEqual(uuid, UUID)) {
         return { hasError: true, message: '无效的用户' };
     }
     const optionsLength = view.getUint8(17);

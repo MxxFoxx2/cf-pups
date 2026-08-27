@@ -18,11 +18,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20230710.1",
-    "@vitest/coverage-v8": "^4.1.11",
-    "esbuild": "^0.27.2",
+    "@cloudflare/workers-types": "^5.20260815.1",
+    "esbuild": "^0.28.2",
     "javascript-obfuscator": "^4.1.1",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.60.0"
+    "wrangler": "~4.124.0"
   }
 }

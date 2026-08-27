@@ -5,7 +5,7 @@
  * [Password SHA224 (56 bytes hex)] [CRLF (2 bytes)] [Cmd (1 byte)] [AddrType (1 byte)] [Addr] [Port (2 bytes)] [CRLF (2 bytes)] [Payload]
  */
 
-import { sha224 } from '../utils/crypto.js';
+import { sha224, timingSafeEqual } from '../utils/crypto.js';
 import { TROJAN_CMD_TCP, TROJAN_CMD_UDP } from '../config/constants.js';
 import { ADDRESS_KIND_DOMAIN, ADDRESS_KIND_IPV4, ADDRESS_KIND_IPV6, readAddress } from '../utils/address.js';
 
@@ -39,7 +39,7 @@ export function isTrojanProtocol(buffer, password) {
 	try {
 		const receivedPasswordHash = new TextDecoder().decode(bytes.slice(0, 56));
 		const expectedPasswordHash = sha224(password);
-		return receivedPasswordHash === expectedPasswordHash;
+		return timingSafeEqual(receivedPasswordHash, expectedPasswordHash);
 	} catch {
 		return false;
 	}
@@ -74,7 +74,7 @@ export function processTrojanHeader(buffer, password) {
 	const expectedPasswordHash = sha224(password);
 
 	// Verify password
-	if (receivedPasswordHash !== expectedPasswordHash) {
+	if (!timingSafeEqual(receivedPasswordHash, expectedPasswordHash)) {
 		return { hasError: true, message: 'Invalid Trojan password' };
 	}
 

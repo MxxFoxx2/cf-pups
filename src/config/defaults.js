@@ -4,9 +4,11 @@
 
 /**
  * Default user ID (UUID format)
+ * Intentionally empty: the UUID must be provided via the UUID environment
+ * variable (e.g. `wrangler secret put UUID` or the Cloudflare dashboard).
  * Generate UUID: [Windows] Press "Win + R", input cmd and run: Powershell -NoExit -Command "[guid]::NewGuid()"
  */
-export const defaultUserID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+export const defaultUserID = '';
 
 /**
  * Default Trojan password

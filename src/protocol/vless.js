@@ -3,17 +3,7 @@
  */
 
 import { stringify } from '../utils/encoding.js';
-import { ADDRESS_KIND_DOMAIN, ADDRESS_KIND_IPV4, ADDRESS_KIND_IPV6, readAddress } from '../utils/address.js';
-import { parseList } from '../utils/list.js';
-
-/**
- * Maps VLESS address type bytes to shared address kinds
- */
-const ADDRESS_KINDS = {
-	1: ADDRESS_KIND_IPV4,
-	2: ADDRESS_KIND_DOMAIN,
-	3: ADDRESS_KIND_IPV6
-};
+import { timingSafeEqual } from '../utils/crypto.js';
 
 /**
  * Processes VLESS protocol header.
@@ -41,10 +31,8 @@ export function processProtocolHeader(protocolBuffer, userID) {
 	const version = dataView.getUint8(0);
 	const slicedBufferString = stringify(bytes.slice(1, 17));
 
-	const uuids = parseList(userID);
-	const isValidUser = uuids.some(uuid => slicedBufferString === uuid);
-
-	console.log(`userID: ${slicedBufferString}`);
+	const uuids = userID.includes(',') ? userID.split(",") : [userID];
+	const isValidUser = uuids.some(uuid => timingSafeEqual(slicedBufferString, uuid.trim()));
 
 	if (!isValidUser) {
 		return { hasError: true, message: 'invalid user' };
